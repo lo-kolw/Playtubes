@@ -1,59 +1,39 @@
 const express = require('express');
 const multer = require('multer');
+const cors = require('cors');
+const axios = require('axios');
 const { S3Client } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
-const cors = require('cors');
 
 const app = express();
-app.use(cors());
-
+app.use(cors()); // Allows your .rf.gd site to talk to Render
 const upload = multer({ storage: multer.memoryStorage() });
 
+const PORT = process.env.PORT || 3000;
+
+// --- ARCHIVE.ORG LOGIN (S3 KEYS) ---
 const s3Client = new S3Client({
     endpoint: "https://s3.us.archive.org",
     region: "us-east-1",
     credentials: {
-        accessKeyId: process.env.ACCESS_ARCHIVE_PRIVATE,
-        secretAccessKey: process.env.PUBLIC_ARCHIVE_PRIVATE,
+        accessKeyId: process.env.ARCHIVE_ACCESS_KEY,
+        secretAccessKey: process.env.ARCHIVE_SECRET_KEY,
     },
     forcePathStyle: true,
 });
 
-app.get('/api/videos', async (req, res) => {
-    try {
-        const searchQuery = "subject:(playtubes) AND mediatype:(movies)";
-        const url = `https://archive.org/advancedsearch.php?q=${searchQuery}&output=json&sort[]=createdate+desc`;
+// --- 1. HEALTH CHECK (Keep-alive) ---
+app.get('/', (req, res) => res.send('PlayTubes Bridge is Online! 🚀'));
 
-        const response = await axios.get(url);
-        const itens = response.data.response.docs;
-        
-        const videos = itens.map(item => {
-            return {
-                id: item.identifier,
-                titulo: item.title,
-                thumb: `https://archive.org/services/img/${item.identifier}`,
-                link_archive: `https://archive.org/details/${item.identifier}`,
-                video_url: `https://archive.org/download/${item.identifier}/${item.identifier}.mp4`
-            };
-        });
+// --- 2. UPLOAD ROUTE (With #playtubes tag) ---
+app.post('/upload', upload.single('video'), async (req, res) => {
+    if (!req.file) return res.status(400).send('No video file provided.');
 
-        res.json(videos);
-    } catch (error) {
-        console.error("Error searching for videos:", error);
-        res.status(500).json({ error: "The videos could not be loaded." });
-    }
-});
-
-app.post('/api/upload', upload.single('video'), async (req, res) => {
-    if (!req.file) return res.status(400).send('No video as received.');
-
-    const itemId = `playtube_${Date.now()}`;
+    const itemId = `playtubes_${Date.now()}`;
     const fileName = req.file.originalname.replace(/\s+/g, '_');
 
     try {
-        console.log(`Received & sended: ${fileName}`);
-
-        const paralelUpload = new Upload({
+        const parallelUpload = new Upload({
             client: s3Client,
             params: {
                 Bucket: itemId,
@@ -63,25 +43,41 @@ app.post('/api/upload', upload.single('video'), async (req, res) => {
                 Metadata: {
                     "mediatype": "movies",
                     "collection": "opensource_movies",
+                    "subject": "playtubes", // YOUR HASHTAG HERE
                     "title": fileName
                 },
             },
-            partSize: 1024 * 1024 * 5,
+            partSize: 1024 * 1024 * 5, // 5MB chunks
         });
 
-        await paralelUpload.done();
-        
-        const videoURL = `https://archive.org/download/${itemId}/${fileName}`;
-        res.json({ 
-            success: true, 
-            url: videoURL, 
-            details: `https://archive.org/details/${itemId}` 
-        });
-
+        await parallelUpload.done();
+        res.json({ success: true, id: itemId });
     } catch (err) {
         console.error(err);
-        res.status(500).json({ error: "Error for tunneling the video." });
+        res.status(500).json({ error: "Upload failed." });
     }
 });
 
-app.listen(process.env.PORT || 3000, () => console.log("Activet!"));
+// --- 3. SEARCH ROUTE (Find videos by hashtag) ---
+app.get('/videos', async (req, res) => {
+    try {
+        const query = "subject:(playtubes) AND mediatype:(movies)";
+        const url = `https://archive.org/advancedsearch.php?q=${query}&output=json&sort[]=createdate+desc`;
+
+        const response = await axios.get(url);
+        const docs = response.data.response.docs;
+
+        const videoList = docs.map(item => ({
+            id: item.identifier,
+            title: item.title,
+            thumbnail: `https://archive.org/services/img/${item.identifier}`,
+            video_url: `https://archive.org/download/${item.identifier}/${item.identifier}.mp4`
+        }));
+
+        res.json(videoList);
+    } catch (err) {
+        res.status(500).json({ error: "Search failed." });
+    }
+});
+
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

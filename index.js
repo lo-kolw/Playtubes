@@ -40,7 +40,7 @@ app.get('/api/videos', async (req, res) => {
         res.json(videos);
     } catch (error) {
         console.error("Erro ao buscar vídeos:", error);
-        res.status(500).json({ erro: "Não foi possível carregar os vídeos." });
+        res.status(500).json({ error: "The videos could not be loaded." });
     }
 });
 

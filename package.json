@@ -1,7 +1,7 @@
 {
   "name": "playtubes-bridge",
   "version": "1.0.0",
-  "description": "Private last server",
+  "description": "Bridge between PlayTubes and Archive.org",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -11,7 +11,7 @@
     "@aws-sdk/lib-storage": "^3.0.0",
     "axios": "^1.6.0",
     "cors": "^2.8.5",
-    "express": "^4.18.0",
+    "express": "^4.18.2",
     "multer": "^1.4.5-lts.1"
   }
 }

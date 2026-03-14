@@ -19,7 +19,32 @@ const s3Client = new S3Client({
     forcePathStyle: true,
 });
 
-app.post('/upload', upload.single('video'), async (req, res) => {
+app.get('/api/videos', async (req, res) => {
+    try {
+        const searchQuery = "subject:(playtubes) AND mediatype:(movies)";
+        const url = `https://archive.org/advancedsearch.php?q=${searchQuery}&output=json&sort[]=createdate+desc`;
+
+        const response = await axios.get(url);
+        const itens = response.data.response.docs;
+        
+        const videos = itens.map(item => {
+            return {
+                id: item.identifier,
+                titulo: item.title,
+                thumb: `https://archive.org/services/img/${item.identifier}`,
+                link_archive: `https://archive.org/details/${item.identifier}`,
+                video_url: `https://archive.org/download/${item.identifier}/${item.identifier}.mp4`
+            };
+        });
+
+        res.json(videos);
+    } catch (error) {
+        console.error("Erro ao buscar vídeos:", error);
+        res.status(500).json({ erro: "Não foi possível carregar os vídeos." });
+    }
+});
+
+app.post('/api/upload', upload.single('video'), async (req, res) => {
     if (!req.file) return res.status(400).send('No video as received.');
 
     const itemId = `playtube_${Date.now()}`;
